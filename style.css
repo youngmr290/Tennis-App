@@ -35,6 +35,8 @@ h1, h2 {
   margin-top: 0;
 }
 
+/* --- Forms & Buttons --- */
+
 .form-inline {
   display: flex;
   flex-wrap: wrap;
@@ -74,32 +76,97 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* --- Players panel / header --- */
+
 .players-list-container {
-  max-height: 260px;
+  max-height: 60vh;
   overflow-y: auto;
   border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
 }
 
+/* header row with title + button */
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.small-btn {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+/* --- Players table --- */
+
 .players-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; /* consistent column sizing */
   font-size: 0.9rem;
 }
 
 .players-table th,
 .players-table td {
-  padding: 0.4rem 0.5rem;
+  padding: 8px;
   border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* zebra stripes */
 .players-table tbody tr:nth-child(even) {
   background: #f9fafb;
 }
 
-.players-table input[type="checkbox"] {
-  transform: scale(1.2);
+/* Left align text columns by default */
+.players-table td:not(.center-cell),
+.players-table th:not(.center-cell) {
+  text-align: left;
 }
+
+/* Centered columns (checkboxes + delete) */
+.players-table .center-cell {
+  text-align: center;
+}
+
+/* Make checkbox columns narrower */
+.players-table .checkbox-col {
+  width: 60px;
+}
+
+/* Make delete column narrower */
+.players-table .delete-col {
+  width: 70px;
+}
+
+/* Style the checkboxes */
+.players-table input[type="checkbox"] {
+  display: block;
+  margin: 0 auto;
+  transform: scale(1.2);
+  cursor: pointer;
+}
+
+/* Delete (X) button in table */
+.danger-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 16px;
+  text-align: center;
+  line-height: 28px;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+/* --- Misc layout --- */
 
 .controls {
   margin-top: 0.75rem;
@@ -117,6 +184,8 @@ button:disabled {
   font-size: 0.8rem;
   color: #6b7280;
 }
+
+/* --- Rounds / courts --- */
 
 .rounds-panel {
   margin-top: 1rem;
@@ -150,6 +219,8 @@ button:disabled {
 .courts-list li:last-child {
   border-bottom: none;
 }
+
+/* --- Footer --- */
 
 .app-footer {
   text-align: center;
