@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tennis Sunday Fixtures</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Tennis Sunday Fixtures</h1>
+  </header>
+
+  <main class="app-main">
+    <section class="panel">
+      <h2>Players</h2>
+      <form id="add-player-form" class="form-inline">
+        <input type="text" id="player-name" placeholder="Name" required>
+        <select id="player-gender">
+          <option value="M">M</option>
+          <option value="F">F</option>
+          <option value="O">Other</option>
+        </select>
+        <input type="number" id="player-skill" min="1" max="10" value="5" required>
+        <button type="submit">Add Player</button>
+      </form>
+
+      <div class="players-list-container">
+        <table class="players-table">
+          <thead>
+            <tr>
+                <th>Name</th>
+                <th>Gender</th>
+                <th>Skill</th>
+                <th>Present?</th>
+                <th>Happy to sit?</th>
+                <th>Played</th>
+                <th>Sat out</th>
+            </tr>
+            </thead>
+          <tbody id="players-table-body">
+            <!-- filled by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="controls">
+        <button id="clear-day-btn" class="secondary">Start New Day (clear rounds)</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Round Settings</h2>
+
+      <div class="settings-group">
+        <label>
+          Mixed doubles preference (not enforced yet):
+          <input type="range" id="mixed-slider" min="0" max="100" value="50">
+          <span id="mixed-slider-value">50%</span>
+        </label>
+      </div>
+
+      <div class="settings-group">
+        <label>
+          Skill grouping (not enforced yet):
+          <select id="skill-mode">
+            <option value="balanced">Balanced skill per court</option>
+            <option value="random">Random skill</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="controls">
+        <button id="generate-round-btn">Generate Next Round</button>
+        <p class="hint">
+          Uses all players marked as present, in multiples of 4. Extra players sit out this round.
+        </p>
+      </div>
+
+      <section class="panel rounds-panel">
+        <h2>Rounds Today</h2>
+        <div id="rounds-container">
+          <!-- rounds appear here -->
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <small>Data stored locally in this browser (localStorage).</small>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
