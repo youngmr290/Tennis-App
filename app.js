@@ -1,3 +1,81 @@
+/* 
+==========================================================
+🔄 MATCH GENERATION PRIORITY LOGIC (v2)
+==========================================================
+
+This app generates doubles rounds for a tennis club. People arrive,
+mark themselves present, and the app builds rounds trying to:
+
+1) Be fair about who sits out.
+2) Respect the chosen pairing mode (same-gender / mixed / neutral).
+3) Rotate people so they see new partners/opponents where possible.
+4) Respect skill settings for court balance, with a user-choice
+   "rotation focus" setting controlling how strongly we care about
+   variety vs skill.
+
+-----------------------------------------
+Sitting-out fairness (highest priority)
+-----------------------------------------
+When we need sit-outs this round, we:
+
+ 1. Prefer players with FEWEST total sits to *keep sits balanced*.
+ 2. Avoid repeat sit-outs (someone who sat last round) if possible.
+ 3. Among equals, prefer players who tick “Happy to sit”.
+ 4. If still tied, we look at games played (more games → more likely to sit).
+ 5. As a final tie-break, we consider pairing mode / gender structure,
+    and then alphabetical order for deterministic behavior.
+
+We also do a small search over combinations of sitters (for 1–3 sit-outs)
+to choose the combo that best supports fairness + gender structure.
+
+-----------------------------------------
+Pairing mode enforcement
+-----------------------------------------
+After sit-outs are chosen, we:
+
+  • "Same-gender" → try to make as many all-M or all-F courts as possible.
+  • "Mixed-priority" → try to encourage mixed doubles (M+F pairs) where we can.
+  • "Neutral" → no strong gender constraint.
+
+If gender constraints conflict with fairness, fairness is king.
+
+-----------------------------------------
+Rotation vs Skill (user setting)
+-----------------------------------------
+We expose a "Rotation focus" setting:
+
+  • "Variety"      → more weight on NEW partners & spread.
+  • "Balanced"     → mix of variety + skill fairness.
+  • "Skill first"  → keeps matches more even at the cost of variety.
+
+This primarily affects how we choose pairings within a court of 4.
+
+-----------------------------------------
+Partner uniqueness
+-----------------------------------------
+Within each court of 4 players, there are 3 ways to split into two pairs.
+We score each option by:
+
+  • How often those pairs have played together before (we avoid repeats).
+  • Skill gap between the sides.
+  • Gender pattern vs pairing mode (e.g. prefer mixed or same-gender).
+
+Lower scored options are chosen.
+
+-----------------------------------------
+Debug tooltips
+-----------------------------------------
+If "Show reasoning tooltips" is ON, we attach short explanations to:
+
+  • Sit-out list (why these players sat).
+  • Each court line (what the system was trying to do).
+
+Tooltips are compact, not full forensic logs.
+
+==========================================================
+*/
+
+
 // ===========================
 //  STATE & PERSISTENCE
 // ===========================
@@ -8,10 +86,14 @@ let state = loadState();
 
 function defaultState() {
   return {
-    players: [],          // array of { id, name, gender, skill, isPresent, happyToSit, gamesPlayed, sits }
-    rounds: [],           // array of { roundNumber, courts: [ { courtNumber, players:[ids], pairs:[[id,id],[id,id]] } ], sitOut:[ids] }
+    players: [],          // { id, name, gender, skill, isPresent, happyToSit, gamesPlayed, sits, isArchived }
+    rounds: [],           // { roundNumber, courts:[{courtNumber, players:[ids], pairs:[[id,id],[id,id]]}], sitOut:[ids], debug? }
     nextPlayerId: 1,
-    nextRoundNumber: 1
+    nextRoundNumber: 1,
+    pairingMode: 'neutral',
+    skillMode: 'balanced',
+    rotationMode: 'balanced',    // 'variety' | 'balanced' | 'skill-first'
+    debugTooltips: true
   };
 }
 
@@ -20,11 +102,8 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
-    if (!parsed.players || !Array.isArray(parsed.players)) {
-      return defaultState();
-    }
+    if (!parsed.players || !Array.isArray(parsed.players)) return defaultState();
 
-    // Basic sanity / backwards-compat if old objects exist
     parsed.players.forEach(p => {
       if (typeof p.gamesPlayed !== 'number') p.gamesPlayed = 0;
       if (typeof p.sits !== 'number') p.sits = 0;
@@ -43,6 +122,11 @@ function loadState() {
       parsed.nextRoundNumber = (parsed.rounds?.length || 0) + 1;
     }
 
+    if (!parsed.pairingMode) parsed.pairingMode = 'neutral';
+    if (!parsed.skillMode) parsed.skillMode = 'balanced';
+    if (!parsed.rotationMode) parsed.rotationMode = 'balanced';
+    if (typeof parsed.debugTooltips !== 'boolean') parsed.debugTooltips = true;
+
     return parsed;
   } catch (e) {
     console.error('Error loading state', e);
@@ -53,6 +137,7 @@ function loadState() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+
 
 // ===========================
 //  GENERAL HELPERS
@@ -71,7 +156,12 @@ function pairKey(a, b) {
   return a < b ? `${a}-${b}` : `${b}-${a}`;
 }
 
-// Count how many times each pair has been partners across all rounds
+function quartetKey(ids) {
+  const sorted = ids.slice().sort((a, b) => a - b);
+  return sorted.join('-');
+}
+
+// partner counts across all past rounds
 function buildPartnerCounts() {
   const counts = {};
   for (const round of state.rounds) {
@@ -85,9 +175,51 @@ function buildPartnerCounts() {
   return counts;
 }
 
+// court (quartet) counts across all past rounds
+function buildQuartetCounts() {
+  const counts = {};
+  for (const round of state.rounds) {
+    for (const court of round.courts) {
+      if (!court.players || court.players.length !== 4) continue;
+      const key = quartetKey(court.players);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
 function getPlayerById(id) {
   return state.players.find(p => p.id === id) || null;
 }
+
+// Simple tooltip helper
+function makeTooltip(element, text) {
+  element.classList.add('tooltip-target');
+  element.dataset.tooltip = text;
+}
+
+// rotation weight helper for pairing scoring
+function getRotationWeights() {
+  const mode = state.rotationMode || 'balanced';
+  if (mode === 'variety') {
+    return {
+      partnerRepeatWeight: 6,
+      skillGapWeight: 2
+    };
+  }
+  if (mode === 'skill-first') {
+    return {
+      partnerRepeatWeight: 3,
+      skillGapWeight: 7
+    };
+  }
+  // balanced
+  return {
+    partnerRepeatWeight: 5,
+    skillGapWeight: 5
+  };
+}
+
 
 // ===========================
 //  DOM ELEMENTS
@@ -105,6 +237,9 @@ const roundsContainer = document.getElementById('rounds-container');
 
 const skillModeSelect = document.getElementById('skill-mode');
 const pairingModeSelect = document.getElementById('pairing-mode');
+const rotationModeSelect = document.getElementById('rotation-mode');
+const debugTooltipsToggle = document.getElementById('debug-tooltips-toggle');
+
 
 // ===========================
 //  RENDERING
@@ -130,6 +265,7 @@ function renderPlayers() {
     skillTd.textContent = p.skill;
 
     const presentTd = document.createElement('td');
+    presentTd.classList.add('center-cell', 'checkbox-col');
     const presentCheckbox = document.createElement('input');
     presentCheckbox.type = 'checkbox';
     presentCheckbox.checked = !!p.isPresent;
@@ -140,6 +276,7 @@ function renderPlayers() {
     presentTd.appendChild(presentCheckbox);
 
     const happyTd = document.createElement('td');
+    happyTd.classList.add('center-cell', 'checkbox-col');
     const happyCheckbox = document.createElement('input');
     happyCheckbox.type = 'checkbox';
     happyCheckbox.checked = !!p.happyToSit;
@@ -156,6 +293,7 @@ function renderPlayers() {
     sitsTd.textContent = p.sits ?? 0;
 
     const deleteTd = document.createElement('td');
+    deleteTd.classList.add('center-cell', 'delete-col');
     const deleteBtn = document.createElement('button');
     deleteBtn.textContent = '✕';
     deleteBtn.className = 'danger-btn';
@@ -164,7 +302,7 @@ function renderPlayers() {
       const ok = confirm(`Delete player "${p.name}"? They will be removed from the list but kept in old rounds.`);
       if (!ok) return;
       p.isArchived = true;
-      p.isPresent = false;    // make sure they aren't selected
+      p.isPresent = false;
       saveState();
       renderPlayers();
     });
@@ -182,7 +320,6 @@ function renderPlayers() {
     playersTableBody.appendChild(tr);
   }
 }
-
 
 function renderRounds() {
   roundsContainer.innerHTML = '';
@@ -207,6 +344,7 @@ function renderRounds() {
     const ul = document.createElement('ul');
     ul.className = 'courts-list';
 
+    // courts
     for (const court of round.courts) {
       const li = document.createElement('li');
 
@@ -218,7 +356,40 @@ function renderRounds() {
 
       const text = `Court ${court.courtNumber}: ${p1a?.name ?? '?'} & ${p1b?.name ?? '?'}  vs  ${p2a?.name ?? '?'} & ${p2b?.name ?? '?'}`;
       li.textContent = text;
+
+      if (state.debugTooltips && round.debug && round.debug.courtReasons) {
+        const reason = round.debug.courtReasons[court.courtNumber] || '';
+        if (reason) {
+          const info = document.createElement('span');
+          info.textContent = ' ⓘ';
+          makeTooltip(info, reason);
+          li.appendChild(info);
+        }
+      }
+
       ul.appendChild(li);
+    }
+
+    // sit-outs
+    if (round.sitOut && round.sitOut.length > 0) {
+      const liSit = document.createElement('li');
+      const names = round.sitOut
+        .map(id => getPlayerById(id)?.name)
+        .filter(Boolean)
+        .join(', ');
+      liSit.textContent = `Sitting out: ${names || '?'}`;
+
+      if (state.debugTooltips && round.debug && round.debug.sitOutReasons) {
+        const lines = round.debug.sitOutReasons.map(x => `${x.name}: ${x.reason}`).join('\n');
+        if (lines) {
+          const info = document.createElement('span');
+          info.textContent = ' ⓘ';
+          makeTooltip(info, lines);
+          liSit.appendChild(info);
+        }
+      }
+
+      ul.appendChild(liSit);
     }
 
     card.appendChild(ul);
@@ -226,45 +397,189 @@ function renderRounds() {
   }
 }
 
+
+// ===========================
+//  SETTINGS INIT
+// ===========================
+
+if (skillModeSelect) {
+  skillModeSelect.value = state.skillMode || 'balanced';
+  skillModeSelect.addEventListener('change', () => {
+    state.skillMode = skillModeSelect.value;
+    saveState();
+  });
+}
+
+if (pairingModeSelect) {
+  pairingModeSelect.value = state.pairingMode || 'neutral';
+  pairingModeSelect.addEventListener('change', () => {
+    state.pairingMode = pairingModeSelect.value;
+    saveState();
+  });
+}
+
+if (rotationModeSelect) {
+  rotationModeSelect.value = state.rotationMode || 'balanced';
+  rotationModeSelect.addEventListener('change', () => {
+    state.rotationMode = rotationModeSelect.value;
+    saveState();
+  });
+}
+
+if (debugTooltipsToggle) {
+  debugTooltipsToggle.checked = !!state.debugTooltips;
+  debugTooltipsToggle.addEventListener('change', () => {
+    state.debugTooltips = debugTooltipsToggle.checked;
+    saveState();
+    renderRounds();
+  });
+}
+
+
 // ===========================
 //  SITTING-OUT LOGIC
-//  (this is "king" and runs BEFORE gender modes)
 // ===========================
 
-function pickSitOutPlayers(activePlayers, numSit) {
-  if (numSit <= 0) return [];
+function getLastSitSet() {
+  if (!state.rounds.length) return new Set();
+  const last = state.rounds[state.rounds.length - 1];
+  return new Set(last.sitOut || []);
+}
 
-  // Priority:
-  // 1) sits ASC  (fewest times sat out)
-  // 2) happyToSit DESC (true first)
-  // 3) gamesPlayed DESC (most games -> more likely to rest)
-  // 4) name ASC (stable tiebreaker)
-  const sorted = activePlayers.slice().sort((a, b) => {
-    if (a.sits !== b.sits) return a.sits - b.sits;
+// score a single player as a sitter
+function scoreSitCandidate(player, lastSitSet) {
+  let score = 0;
+  const details = [];
 
-    const happyA = a.happyToSit ? 1 : 0;
-    const happyB = b.happyToSit ? 1 : 0;
-    if (happyA !== happyB) return happyB - happyA;
+  // 1) fewest sits (more sits → less likely to sit now)
+  score += player.sits * 10;
+  details.push(`sits=${player.sits}`);
 
-    if (a.gamesPlayed !== b.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
+  // 2) avoid repeat sit if possible
+  if (lastSitSet.has(player.id)) {
+    score += 8;
+    details.push('sat last round (penalty)');
+  } else {
+    details.push('did not sit last round');
+  }
 
-    return a.name.localeCompare(b.name);
+  // 3) happy to sit
+  if (player.happyToSit) {
+    score -= 5;
+    details.push('happy to sit (bonus)');
+  }
+
+  // 4) games played (more games → more likely to sit)
+  score += player.gamesPlayed * 1;
+  details.push(`games=${player.gamesPlayed}`);
+
+  return { score, details };
+}
+
+// Utility: compute how many pure-gender courts we *could* form from toPlay
+function estimatePureGenderCourts(players) {
+  const m = players.filter(p => p.gender === 'M').length;
+  const f = players.filter(p => p.gender === 'F').length;
+  return Math.floor(m / 4) + Math.floor(f / 4);
+}
+
+// Choose the best combination of sit-outs using fairness + gender-aware scoring
+function pickSitOutPlayers(activePlayers, numSit, pairingMode) {
+  if (numSit <= 0) {
+    return { players: [], debug: [] };
+  }
+
+  const n = activePlayers.length;
+  if (numSit >= n) {
+    return {
+      players: activePlayers.slice(),
+      debug: activePlayers.map(p => ({ name: p.name, reason: 'All must sit (edge case)' }))
+    };
+  }
+
+  const lastSitSet = getLastSitSet();
+  const baseScores = activePlayers.map(p => scoreSitCandidate(p, lastSitSet));
+
+  // combinatorial search is safe because numSit is small in this app
+  let bestCombo = null;
+  let bestScore = Infinity;
+
+  const indices = activePlayers.map((_, idx) => idx);
+
+  function search(start, chosen) {
+    if (chosen.length === numSit) {
+      const sitIndices = new Set(chosen);
+      const toSit = [];
+      const toPlay = [];
+
+      activePlayers.forEach((p, idx) => {
+        if (sitIndices.has(idx)) toSit.push(p);
+        else toPlay.push(p);
+      });
+
+      // sum of base scores
+      let total = 0;
+      for (const idx of chosen) {
+        total += baseScores[idx].score;
+      }
+
+      // gender / pairingMode adjustment
+      if (pairingMode === 'same-gender') {
+        const pureCourts = estimatePureGenderCourts(toPlay);
+        // more pure-gender courts => better (lower score)
+        total -= pureCourts * 5;
+      }
+
+      if (total < bestScore) {
+        bestScore = total;
+        bestCombo = chosen.slice();
+      }
+      return;
+    }
+
+    for (let i = start; i < n; i++) {
+      chosen.push(i);
+      search(i + 1, chosen);
+      chosen.pop();
+    }
+  }
+
+  search(0, []);
+
+  if (!bestCombo) {
+    // fallback: just sort by base score
+    const sorted = activePlayers.slice().sort((a, b) => {
+      const sa = scoreSitCandidate(a, lastSitSet).score;
+      const sb = scoreSitCandidate(b, lastSitSet).score;
+      if (sa !== sb) return sa - sb;
+      return a.name.localeCompare(b.name);
+    });
+    const chosen = sorted.slice(0, numSit);
+    const debug = chosen.map(p => {
+      const s = scoreSitCandidate(p, lastSitSet);
+      return { name: p.name, reason: s.details.join(', ') };
+    });
+    return { players: chosen, debug };
+  }
+
+  const sitPlayers = bestCombo.map(i => activePlayers[i]);
+  const debug = sitPlayers.map(p => {
+    const s = scoreSitCandidate(p, lastSitSet);
+    return { name: p.name, reason: s.details.join(', ') };
   });
 
-  return sorted.slice(0, numSit);
+  return { players: sitPlayers, debug };
 }
+
 
 // ===========================
 //  GROUPING PLAYERS INTO COURTS
 // ===========================
 
-// Skill-based grouping (used in neutral / mixed priority modes,
-// and for leftovers in same-gender mode)
 function groupPlayersBySkillMode(playersToPlay) {
   const numCourts = playersToPlay.length / 4;
   const groups = [];
-
-  const mode = (skillModeSelect && skillModeSelect.value) || 'balanced';
+  const mode = state.skillMode || 'balanced';
 
   if (mode === 'random') {
     const shuffled = shuffle(playersToPlay);
@@ -276,7 +591,6 @@ function groupPlayersBySkillMode(playersToPlay) {
   }
 
   if (mode === 'clustered') {
-    // Group high skill with high, low with low
     const sorted = playersToPlay.slice().sort((a, b) => b.skill - a.skill);
     for (let i = 0; i < sorted.length; i += 4) {
       const group = sorted.slice(i, i + 4);
@@ -285,11 +599,10 @@ function groupPlayersBySkillMode(playersToPlay) {
     return groups;
   }
 
-  // Balanced: try to spread strong players across courts
+  // balanced: snake distribution
   const sorted = playersToPlay.slice().sort((a, b) => b.skill - a.skill);
   const courts = Array.from({ length: numCourts }, () => []);
 
-  // "Snake" distribution: 1→N then N→1 etc.
   for (let i = 0; i < sorted.length; i++) {
     const block = Math.floor(i / numCourts);
     const pos = i % numCourts;
@@ -304,41 +617,34 @@ function groupPlayersBySkillMode(playersToPlay) {
   return groups;
 }
 
-// Same-gender mode: build as many single-gender courts as possible,
-// then group any remaining mixed players by skill.
 function groupPlayersSameGenderFirst(playersToPlay) {
   const males = playersToPlay.filter(p => p.gender === 'M');
   const females = playersToPlay.filter(p => p.gender === 'F');
   const others = playersToPlay.filter(p => p.gender !== 'M' && p.gender !== 'F');
 
-  // Randomise within gender lists a bit so the same people don't always cluster
   const mList = shuffle(males);
   const fList = shuffle(females);
   const oList = shuffle(others);
 
   const groups = [];
-
   let mIndex = 0;
   let fIndex = 0;
 
   const mCourts = Math.floor(mList.length / 4);
   const fCourts = Math.floor(fList.length / 4);
 
-  // First, create all-male courts
   for (let i = 0; i < mCourts; i++) {
-    const group = mList.slice(mIndex, mIndex + 4);
-    if (group.length === 4) groups.push(group);
+    const g = mList.slice(mIndex, mIndex + 4);
+    if (g.length === 4) groups.push(g);
     mIndex += 4;
   }
 
-  // Then, create all-female courts
   for (let i = 0; i < fCourts; i++) {
-    const group = fList.slice(fIndex, fIndex + 4);
-    if (group.length === 4) groups.push(group);
+    const g = fList.slice(fIndex, fIndex + 4);
+    if (g.length === 4) groups.push(g);
     fIndex += 4;
   }
 
-  // Remaining players (mixed gender and/or "other") are grouped by skill mode
   const remaining = []
     .concat(mList.slice(mIndex))
     .concat(fList.slice(fIndex))
@@ -352,11 +658,11 @@ function groupPlayersSameGenderFirst(playersToPlay) {
   return groups;
 }
 
+
 // ===========================
 //  PAIRING INSIDE A COURT OF 4
 // ===========================
 
-// Pair info helper
 function getPairGenderInfo(pair) {
   const pa = getPlayerById(pair[0]);
   const pb = getPlayerById(pair[1]);
@@ -367,7 +673,6 @@ function getPairGenderInfo(pair) {
   return { isMixed, isSame };
 }
 
-// Choose 2 pairs from a group of 4, given partnerCounts and mode
 function choosePairsForGroup(group, partnerCounts, pairingMode) {
   const [a, b, c, d] = group;
 
@@ -377,116 +682,64 @@ function choosePairsForGroup(group, partnerCounts, pairingMode) {
     [[a.id, d.id], [b.id, c.id]]
   ];
 
-  // Basic scoring: fewer repeat partnerings -> lower score
-  function partnerScoreForOption(opt) {
+  const weights = getRotationWeights();
+
+  function scoreOption(opt) {
     const [p1, p2] = opt;
+
     const key1 = pairKey(p1[0], p1[1]);
     const key2 = pairKey(p2[0], p2[1]);
-    return (partnerCounts[key1] || 0) + (partnerCounts[key2] || 0);
-  }
 
-  // Count mixed pairs in an option
-  function mixedCountForOption(opt) {
-    const [p1, p2] = opt;
-    const i1 = getPairGenderInfo(p1);
-    const i2 = getPairGenderInfo(p2);
-    return (i1.isMixed ? 1 : 0) + (i2.isMixed ? 1 : 0);
-  }
+    const partnerRepeatScore = (partnerCounts[key1] || 0) + (partnerCounts[key2] || 0);
 
-  // Quick gender summary for this group
-  const genders = group.map(p => p.gender);
-  const numM = genders.filter(g => g === 'M').length;
-  const numF = genders.filter(g => g === 'F').length;
-  const has2M2F = (numM === 2 && numF === 2);
+    const p1a = getPlayerById(p1[0]);
+    const p1b = getPlayerById(p1[1]);
+    const p2a = getPlayerById(p2[0]);
+    const p2b = getPlayerById(p2[1]);
+    const s1 = (p1a?.skill || 0) + (p1b?.skill || 0);
+    const s2 = (p2a?.skill || 0) + (p2b?.skill || 0);
+    const skillGap = Math.abs(s1 - s2);
 
-  // ---- MODE: SAME-GENDER PRIORITY ----
-  if (pairingMode === 'same-gender') {
-    const allSameGender = (numM === 4 || numF === 4 || (numM + numF === 0));
+    // gender pattern
+    const g1 = getPairGenderInfo(p1);
+    const g2 = getPairGenderInfo(p2);
+    let genderPenalty = 0;
 
-    // If the group is all-male or all-female (or no M/F info), just minimise repeat partners
-    if (allSameGender) {
-      let best = options[0];
-      let bestScore = Infinity;
-      for (const opt of options) {
-        const score = partnerScoreForOption(opt);
-        if (score < bestScore) {
-          bestScore = score;
-          best = opt;
-        }
-      }
-      return best;
-    }
-
-    // If exactly 2M + 2F in this leftover group, prefer mixed doubles: M+F vs M+F
-    if (has2M2F) {
-      const mixedOptions = options.filter(opt => mixedCountForOption(opt) === 2);
-      if (mixedOptions.length > 0) {
-        let best = mixedOptions[0];
-        let bestScore = Infinity;
-        for (const opt of mixedOptions) {
-          const score = partnerScoreForOption(opt);
-          if (score < bestScore) {
-            bestScore = score;
-            best = opt;
-          }
-        }
-        return best;
+    if (pairingMode === 'mixed-priority') {
+      // want mixed pairs where possible
+      const mixedCount = (g1.isMixed ? 1 : 0) + (g2.isMixed ? 1 : 0);
+      genderPenalty += (2 - mixedCount) * 3;
+    } else if (pairingMode === 'same-gender') {
+      // prefer same-gender pairs in pure-gender courts
+      const genders = group.map(p => p.gender);
+      const numM = genders.filter(g => g === 'M').length;
+      const numF = genders.filter(g => g === 'F').length;
+      const allSame = (numM === 4 || numF === 4);
+      if (allSame) {
+        const sameCount = (g1.isSame ? 1 : 0) + (g2.isSame ? 1 : 0);
+        genderPenalty += (2 - sameCount) * 3;
       }
     }
 
-    // Other combos (e.g. 3M1F, 1M3F) – just minimise repeat partners
-    let best = options[0];
-    let bestScore = Infinity;
-    for (const opt of options) {
-      const score = partnerScoreForOption(opt);
-      if (score < bestScore) {
-        bestScore = score;
-        best = opt;
-      }
-    }
-    return best;
+    return (
+      partnerRepeatScore * weights.partnerRepeatWeight +
+      skillGap * weights.skillGapWeight +
+      genderPenalty
+    );
   }
 
-  // ---- MODE: MIXED DOUBLES FOCUS ----
-  if (pairingMode === 'mixed-priority') {
-    let best = options[0];
-    let bestScore = Infinity;
-    let bestMixed = -1;
-
-    for (const opt of options) {
-      const partnerScore = partnerScoreForOption(opt);
-      const mixedCount = mixedCountForOption(opt);
-
-      // Objective: maximise mixedCount, then minimise partnerScore
-      // So we sort primarily by (-mixedCount), then by partnerScore
-      const scoreTuple = { mixedCount, partnerScore };
-
-      if (
-        scoreTuple.mixedCount > bestMixed ||
-        (scoreTuple.mixedCount === bestMixed && scoreTuple.partnerScore < bestScore)
-      ) {
-        bestMixed = scoreTuple.mixedCount;
-        bestScore = scoreTuple.partnerScore;
-        best = opt;
-      }
-    }
-
-    return best;
-  }
-
-  // ---- MODE: NEUTRAL (no gender preference) ----
-  // Just minimise repeat partners
   let best = options[0];
   let bestScore = Infinity;
   for (const opt of options) {
-    const score = partnerScoreForOption(opt);
-    if (score < bestScore) {
-      bestScore = score;
+    const s = scoreOption(opt);
+    if (s < bestScore) {
+      bestScore = s;
       best = opt;
     }
   }
   return best;
 }
+
 
 // ===========================
 //  GENERATE NEXT ROUND
@@ -499,8 +752,7 @@ function generateNextRound() {
     return;
   }
 
-  // We only use multiples of 4; others must sit out
-  // Also cap at 5 courts (20 players max).
+  // only use multiples of 4, cap at 5 courts
   const maxCourts = 5;
   let maxPlayersInRound = Math.floor(activePlayers.length / 4) * 4;
   const courtCapPlayers = maxCourts * 4;
@@ -512,23 +764,21 @@ function generateNextRound() {
     return;
   }
 
-    const numSit = activePlayers.length - maxPlayersInRound;
+  const numSit = activePlayers.length - maxPlayersInRound;
+  const pairingMode = state.pairingMode || 'neutral';
 
-  // 1) SITTING OUT — this is the highest priority
-  const sitOutPlayers = pickSitOutPlayers(activePlayers, numSit);
+  // 1) choose who sits out
+  const sitResult = pickSitOutPlayers(activePlayers, numSit, pairingMode);
+  const sitOutPlayers = sitResult.players;
   const sitOutIds = new Set(sitOutPlayers.map(p => p.id));
 
-  // Final list of players who will actually play this round
   let playersToPlay = activePlayers.filter(p => !sitOutIds.has(p.id));
-
   if (playersToPlay.length !== maxPlayersInRound) {
     console.warn('Mismatch in playersToPlay vs expected; adjusting.');
     playersToPlay = playersToPlay.slice(0, maxPlayersInRound);
   }
 
-  // 2) GROUPING INTO COURTS
-  const pairingMode = pairingModeSelect ? pairingModeSelect.value : 'neutral';
-
+  // 2) group into courts
   let groups;
   if (pairingMode === 'same-gender') {
     groups = groupPlayersSameGenderFirst(playersToPlay);
@@ -537,25 +787,48 @@ function generateNextRound() {
   }
 
   const partnerCounts = buildPartnerCounts();
+  const quartetCounts = buildQuartetCounts();
   const courts = [];
   let courtNumber = 1;
+  const courtReasons = {};
 
-  // 3) PAIRING WITHIN EACH COURT
+  // 3) choose pairs within each court
   for (const group of groups) {
-    if (group.length < 4) continue; // safety; shouldn't happen
+    if (group.length < 4) continue;
     const bestPairs = choosePairsForGroup(group, partnerCounts, pairingMode);
 
-    // Update partner counts for chosen pairs
     for (const pair of bestPairs) {
       const key = pairKey(pair[0], pair[1]);
       partnerCounts[key] = (partnerCounts[key] || 0) + 1;
     }
 
+    const playerIds = group.map(p => p.id);
+    const qKey = quartetKey(playerIds);
+    const timesCourtSeen = quartetCounts[qKey] || 0;
+    quartetCounts[qKey] = timesCourtSeen + 1;
+
+    let reason = `Court ${courtNumber}: `;
+    if (pairingMode === 'same-gender') {
+      reason += 'same-gender mode; ';
+    } else if (pairingMode === 'mixed-priority') {
+      reason += 'mixed-priority mode; ';
+    } else {
+      reason += 'neutral mode; ';
+    }
+    if (timesCourtSeen > 0) {
+      reason += `this group of 4 has played together ${timesCourtSeen} time(s) before; `;
+    } else {
+      reason += 'new combination of 4 players; ';
+    }
+    reason += `rotation focus: ${state.rotationMode}.`;
+
     courts.push({
-      courtNumber: courtNumber++,
-      players: group.map(p => p.id),
+      courtNumber: courtNumber,
+      players: playerIds,
       pairs: bestPairs
     });
+    courtReasons[courtNumber] = reason;
+    courtNumber++;
   }
 
   if (courts.length === 0) {
@@ -563,12 +836,10 @@ function generateNextRound() {
     return;
   }
 
-  // 4) UPDATE STATS FOR THIS ROUND
+  // 4) update stats
   const playingIds = new Set(playersToPlay.map(p => p.id));
-
   state.players.forEach(p => {
-    if (!p.isPresent) return; // not here this round at all
-
+    if (!p.isPresent) return;
     if (playingIds.has(p.id)) {
       p.gamesPlayed = (p.gamesPlayed || 0) + 1;
     } else if (sitOutIds.has(p.id)) {
@@ -579,7 +850,11 @@ function generateNextRound() {
   const newRound = {
     roundNumber: state.nextRoundNumber++,
     courts,
-    sitOut: sitOutPlayers.map(p => p.id)
+    sitOut: sitOutPlayers.map(p => p.id),
+    debug: {
+      sitOutReasons: sitResult.debug || [],
+      courtReasons
+    }
   };
 
   state.rounds.push(newRound);
@@ -587,6 +862,7 @@ function generateNextRound() {
   renderPlayers();
   renderRounds();
 }
+
 
 // ===========================
 //  EVENT WIRING
@@ -616,7 +892,7 @@ addPlayerForm.addEventListener('submit', (e) => {
     happyToSit: false,
     gamesPlayed: 0,
     sits: 0,
-    isArchived: false  
+    isArchived: false
   });
 
   saveState();
@@ -634,7 +910,7 @@ clearDayBtn.addEventListener('click', () => {
   state.players.forEach(p => {
     p.gamesPlayed = 0;
     p.sits = 0;
-    p.isPresent = false; // optional reset; change if you want to keep "present"
+    p.isPresent = false;
   });
   saveState();
   renderPlayers();
@@ -644,6 +920,7 @@ clearDayBtn.addEventListener('click', () => {
 generateRoundBtn.addEventListener('click', () => {
   generateNextRound();
 });
+
 
 // ===========================
 //  INITIAL RENDER
