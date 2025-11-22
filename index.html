@@ -16,44 +16,53 @@
 
   <main class="app-main">
 
-        <!-- SETTINGS & ROUNDS -->
+    <!-- SETTINGS & ROUNDS -->
     <section class="panel">
       <h2>Round Settings</h2>
 
       <div class="settings-container">
 
         <div class="settings-group">
-            <label>Pairing Mode:</label>
-            <select id="pairing-mode">
+          <label>Pairing Mode:</label>
+          <select id="pairing-mode">
             <option value="same-gender">Boys vs Boys / Girls vs Girls</option>
             <option value="random" selected>No Preference</option>
             <option value="mixed">Mixed Doubles Focus</option>
-            </select>
+          </select>
         </div>
 
         <div class="settings-group">
-            <label>Skill Grouping:</label>
-            <select id="skill-mode">
+          <label>Skill Grouping:</label>
+          <select id="skill-mode">
             <option value="balanced">Balanced skill per court</option>
             <option value="same-skill">Group by skill level</option>
-            </select>
+          </select>
         </div>
 
         <div class="settings-group">
-            <label>Uniqueness:</label>
-            <select id="uniqueness-importance">
+          <label>Uniqueness:</label>
+          <select id="uniqueness-importance">
             <option value="1">Low</option>
             <option value="2">Medium</option>
             <option value="3">High</option>
-            </select>
+          </select>
         </div>
 
+        <div class="settings-group">
+          <label>
+            <input type="checkbox" id="debug-tooltips-toggle" checked>
+            Show reasoning tooltips
+          </label>
+        </div>
 
       </div>
 
       <!-- ROUNDS -->
-      <section class="panel rounds-panel">
-        <h2>Rounds Today</h2>
+      <section class="rounds-panel">
+        <div class="panel-header-row">
+          <h2>Rounds Today</h2>
+          <button id="generate-round-btn">Generate Next Round</button>
+        </div>
         <div id="rounds-container"></div>
       </section>
     </section>
@@ -96,9 +105,6 @@
       </div>
     </section>
 
-
-
-
   </main>
 
   <footer class="app-footer">
@@ -107,7 +113,7 @@
 
   <script src="app.js"></script>
 
-  <!-- add this just after app.js and before </body> -->
+  <!-- Service worker registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
