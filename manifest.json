@@ -1,0 +1,22 @@
+{
+  "name": "Sunday Tennis Rotation",
+  "short_name": "Tennis",
+  "start_url": "/Tennis-App/",
+  "scope": "/Tennis-App/",
+  "display": "standalone",
+  "background_color": "#0b4f6c",
+  "theme_color": "#0b4f6c",
+  "description": "Generate fair tennis doubles rotations for social play.",
+  "icons": [
+    {
+      "src": "/Tennis-App/icons/logo-original-500.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/Tennis-App/icons/logo-original-500.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -5,6 +5,9 @@
   <title>Sunday Tennis Fixtures</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/Tennis-App/manifest.json">
+  <link rel="icon" href="/Tennis-App/icons/logo-original-500.png" />
+  <meta name="theme-color" content="#0b4f6c">
 </head>
 <body>
   <header class="app-header">
@@ -107,5 +110,21 @@
   </footer>
 
   <script src="app.js"></script>
+
+  <!-- add this just after app.js and before </body> -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then(reg => {
+            console.log('Service worker registered', reg.scope);
+          })
+          .catch(err => {
+            console.log('Service worker registration failed', err);
+          });
+      });
+    }
+  </script>
+
 </body>
 </html>
