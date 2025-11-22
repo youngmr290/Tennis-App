@@ -16,6 +16,49 @@
 
   <main class="app-main">
 
+        <!-- SETTINGS & ROUNDS -->
+    <section class="panel">
+      <h2>Round Settings</h2>
+
+      <div class="settings-container">
+
+        <div class="settings-group">
+            <label>Pairing Mode:</label>
+            <select id="pairing-mode">
+            <option value="same-gender">Boys vs Boys / Girls vs Girls</option>
+            <option value="random" selected>No Preference</option>
+            <option value="mixed">Mixed Doubles Focus</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label>Skill Grouping:</label>
+            <select id="skill-mode">
+            <option value="balanced">Balanced skill per court</option>
+            <option value="same-skill">Group by skill level</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label>Uniqueness:</label>
+            <select id="uniqueness-importance">
+            <option value="1">Low</option>
+            <option value="2">Medium</option>
+            <option value="3">High</option>
+            </select>
+        </div>
+
+
+      </div>
+
+      <!-- ROUNDS -->
+      <section class="panel rounds-panel">
+        <h2>Rounds Today</h2>
+        <div id="rounds-container"></div>
+      </section>
+    </section>
+    
+    
     <!-- PLAYER PANEL -->
     <section class="panel">
       <div class="panel-header-row">
@@ -54,54 +97,7 @@
     </section>
 
 
-    <!-- SETTINGS & ROUNDS -->
-    <section class="panel">
-      <h2>Round Settings</h2>
 
-      <div class="settings-group">
-        <label>Pairing Mode:</label>
-        <select id="pairing-mode">
-          <option value="same-gender">Boys vs Boys / Girls vs Girls</option>
-          <option value="random" selected>No Preference</option>
-          <option value="mixed">Mixed Doubles Focus</option>
-        </select>
-      </div>
-
-      <div class="settings-group">
-        <label>Skill Grouping:</label>
-        <select id="skill-mode">
-          <option value="balanced">Balanced skill per court</option>
-          <option value="same-skill">Group by skill level</option>
-        </select>
-      </div>
-
-      <div class="settings-group">
-        <label>Uniqueness importance:</label>
-        <select id="uniqueness-importance">
-            <option value="1">Low</option>
-            <option value="2">Medium</option>
-            <option value="3">High</option>
-        </select>
-      </div>
-
-      <div class="settings-group">
-        <label>
-          <input type="checkbox" id="debug-tooltips-toggle" checked>
-          Show reasoning tooltips
-        </label>
-      </div>
-
-      <div class="controls">
-        <button id="generate-round-btn">Generate Next Round</button>
-      </div>
-
-
-      <!-- ROUNDS -->
-      <section class="panel rounds-panel">
-        <h2>Rounds Today</h2>
-        <div id="rounds-container"></div>
-      </section>
-    </section>
 
   </main>
 
