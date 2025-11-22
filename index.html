@@ -59,8 +59,8 @@
         <label>Pairing Mode:</label>
         <select id="pairing-mode">
           <option value="same-gender">Boys vs Boys / Girls vs Girls</option>
-          <option value="neutral" selected>No Preference</option>
-          <option value="mixed-priority">Mixed Doubles Focus</option>
+          <option value="random" selected>No Preference</option>
+          <option value="mixed">Mixed Doubles Focus</option>
         </select>
       </div>
 
@@ -68,17 +68,16 @@
         <label>Skill Grouping:</label>
         <select id="skill-mode">
           <option value="balanced">Balanced skill per court</option>
-          <option value="clustered">Group by skill level</option>
-          <option value="random">Random skill</option>
+          <option value="same-skill">Group by skill level</option>
         </select>
       </div>
 
       <div class="settings-group">
-        <label>Rotation Focus:</label>
-        <select id="rotation-mode">
-          <option value="variety">Max new opponents/partners</option>
-          <option value="balanced" selected>Balanced (recommended)</option>
-          <option value="skill-first">Skill first (less rotation)</option>
+        <label>Uniqueness importance:</label>
+        <select id="uniqueness-importance">
+            <option value="1">Low</option>
+            <option value="2">Medium</option>
+            <option value="3">High</option>
         </select>
       </div>
 
