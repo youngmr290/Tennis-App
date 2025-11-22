@@ -425,17 +425,32 @@ function getLastSitSet() {
 }
 
 // score a single player as a sitter based on fairness only
-function scoreSitCandidate(player, lastSitSet, maxGames) {
+// lower score = MORE likely to be chosen to sit
+function scoreSitCandidate(player, lastSitSet, context) {
+  const { avgSitRate, maxGames } = context;
   let score = 0;
   const details = [];
 
+  const sits = player.sits || 0;
   const games = player.gamesPlayed || 0;
 
-  // 1) fewest sits (more sits → less likely to sit now)
-  score += player.sits * 10;
-  details.push(`sits=${player.sits}`);
+  // A) Ratio fairness: sits vs expected sits
+  if (avgSitRate > 0 && games > 0) {
+    const expectedSits = games * avgSitRate;
+    const sitDelta = sits - expectedSits; // negative = under-sat (owes sits)
 
-  // 2) avoid repeat sit if possible
+    // Weight this strongly so one "extra" or "missing" sit is meaningful
+    score += sitDelta * 20;
+    details.push(
+      `sitDelta=${sitDelta.toFixed(2)} (sits=${sits}, expected=${expectedSits.toFixed(2)}, avgRate=${avgSitRate.toFixed(3)})`
+    );
+  } else {
+    // No meaningful average yet → fall back to raw sits
+    score += sits * 10;
+    details.push(`no avgSitRate yet, using sits=${sits}`);
+  }
+
+  // B) Avoid back-to-back sits
   if (lastSitSet.has(player.id)) {
     score += 8;
     details.push('sat last round (penalty)');
@@ -443,18 +458,17 @@ function scoreSitCandidate(player, lastSitSet, maxGames) {
     details.push('did not sit last round');
   }
 
-  // 3) happy to sit
+  // C) Happy to sit = small bonus
   if (player.happyToSit) {
     score -= 5;
     details.push('happy to sit (bonus)');
   }
 
-  // 4) game-lag protection:
-  //    players who are a long way behind in games should NOT be asked to sit yet.
+  // D) Game-lag protection: people far behind in games should not sit yet
   if (maxGames > 0) {
-    const gameLag = maxGames - games; // how many games behind the leader
+    const gameLag = maxGames - games;
     if (gameLag >= 2) {
-      const lagPenalty = gameLag * 5; // tune this weight if needed
+      const lagPenalty = gameLag * 3; // tune if needed
       score += lagPenalty;
       details.push(`protected by game lag: ${gameLag} behind max (penalty +${lagPenalty})`);
     } else {
@@ -543,12 +557,25 @@ function pickSitOutPlayers(activePlayers, numSit, pairingMode, skillMode, coCour
 
   const lastSitSet = getLastSitSet();
 
+  // Global stats for fairness
+  const totalGames = activePlayers.reduce(
+    (sum, p) => sum + (p.gamesPlayed || 0),
+    0
+  );
+  const totalSits = activePlayers.reduce(
+    (sum, p) => sum + (p.sits || 0),
+    0
+  );
+  const avgSitRate = totalGames > 0 ? totalSits / totalGames : 0;
+
   const maxGames = activePlayers.reduce(
     (max, p) => Math.max(max, p.gamesPlayed || 0),
     0
   );
 
-  const baseScores = activePlayers.map(p => scoreSitCandidate(p, lastSitSet, maxGames));
+  const baseScores = activePlayers.map(p =>
+    scoreSitCandidate(p, lastSitSet, { avgSitRate, maxGames })
+  );
   const priorityOrder = getUniquenessPriorityOrder();
 
   function buildTuple(chosenIndices) {
@@ -624,14 +651,14 @@ function pickSitOutPlayers(activePlayers, numSit, pairingMode, skillMode, coCour
   if (!bestChosen) {
     // Fallback: fairness only, alphabetical within fairness
     const sorted = activePlayers.slice().sort((a, b) => {
-      const sa = scoreSitCandidate(a, lastSitSet, maxGames).score;
-      const sb = scoreSitCandidate(b, lastSitSet, maxGames).score;
+      const sa = scoreSitCandidate(a, lastSitSet, { avgSitRate, maxGames }).score;
+      const sb = scoreSitCandidate(b, lastSitSet, { avgSitRate, maxGames }).score;
       if (sa !== sb) return sa - sb;
       return a.name.localeCompare(b.name);
     });
     const chosen = sorted.slice(0, numSit);
     const debug = chosen.map(p => {
-      const s = scoreSitCandidate(p, lastSitSet, maxGames);
+      const s = scoreSitCandidate(p, lastSitSet, { avgSitRate, maxGames });
       return { name: p.name, reason: s.details.join(', ') };
     });
     return { players: chosen, debug };
@@ -639,7 +666,7 @@ function pickSitOutPlayers(activePlayers, numSit, pairingMode, skillMode, coCour
 
   const sitPlayers = bestChosen.map(i => activePlayers[i]);
   const debug = sitPlayers.map(p => {
-    const s = scoreSitCandidate(p, lastSitSet, maxGames);
+    const s = scoreSitCandidate(p, lastSitSet, { avgSitRate, maxGames });
     return { name: p.name, reason: s.details.join(', ') };
   });
 
