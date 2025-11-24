@@ -197,6 +197,9 @@ const debugTooltipsToggle = document.getElementById('debug-tooltips-toggle');
 const regenerateRoundBtn = document.getElementById('regenerate-round-btn');
 const presentCountSpan = document.getElementById('present-count');
 
+const recordAdhocBtn = document.getElementById('record-adhoc-btn');
+const adhocContainer = document.getElementById('adhoc-container');
+
 
 // ===========================
 //  RENDERING
@@ -1027,6 +1030,175 @@ function regenerateLastRound() {
 }
 
 
+// ===========================
+//  AD-HOC COURT RECORDING
+// ===========================
+
+let adhocSelectedIds = new Set();
+
+function clearAdhocPanel() {
+  adhocSelectedIds = new Set();
+  if (adhocContainer) {
+    adhocContainer.innerHTML = '';
+  }
+}
+
+function openAdhocPanel() {
+  if (!adhocContainer) return;
+
+  const active = state.players
+    .filter(p => p.isPresent && !p.isArchived);
+
+  if (active.length < 4) {
+    alert('Need at least 4 present players to record a court.');
+    return;
+  }
+
+  adhocSelectedIds = new Set();
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'adhoc-panel';
+
+  const info = document.createElement('p');
+  info.className = 'adhoc-text';
+  info.textContent = 'Select exactly 4 players who just played together (outside the generated round):';
+  wrapper.appendChild(info);
+
+  const list = document.createElement('div');
+  list.className = 'adhoc-list';
+
+  active
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach(p => {
+      const label = document.createElement('label');
+      label.className = 'adhoc-item';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = String(p.id);
+
+      cb.addEventListener('change', () => {
+        const id = p.id;
+
+        if (cb.checked) {
+          adhocSelectedIds.add(id);
+        } else {
+          adhocSelectedIds.delete(id);
+        }
+
+        // Enforce max 4
+        if (adhocSelectedIds.size > 4) {
+          adhocSelectedIds.delete(id);
+          cb.checked = false;
+          alert('Please select exactly 4 players.');
+        }
+
+        updateAdhocSaveButton();
+      });
+
+      const span = document.createElement('span');
+      span.textContent = `${p.name} (${p.gamesPlayed || 0} played, ${p.sits || 0} sat)`;
+
+      label.appendChild(cb);
+      label.appendChild(span);
+      list.appendChild(label);
+    });
+
+  wrapper.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.className = 'adhoc-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.id = 'adhoc-save-btn';
+  saveBtn.textContent = 'Record Court';
+  saveBtn.disabled = true;
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.id = 'adhoc-cancel-btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.className = 'secondary';
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  wrapper.appendChild(actions);
+
+  adhocContainer.innerHTML = '';
+  adhocContainer.appendChild(wrapper);
+
+  function updateAdhocSaveButton() {
+    saveBtn.disabled = (adhocSelectedIds.size !== 4);
+  }
+
+  saveBtn.addEventListener('click', () => {
+    if (adhocSelectedIds.size !== 4) {
+      alert('Please select exactly 4 players.');
+      return;
+    }
+    recordAdhocCourt(Array.from(adhocSelectedIds));
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    clearAdhocPanel();
+  });
+}
+
+function recordAdhocCourt(playerIds) {
+  if (!playerIds || playerIds.length !== 4) {
+    alert('Need exactly 4 players for an ad-hoc court.');
+    return;
+  }
+
+  const group = playerIds
+    .map(id => getPlayerById(id))
+    .filter(Boolean);
+
+  if (group.length !== 4) {
+    alert('Could not resolve all selected players.');
+    return;
+  }
+
+  // Use existing skill-based pairing logic
+  const pairs = choosePairsForGroup(group);
+
+  // Update stats: +1 game for those 4
+  const idSet = new Set(playerIds);
+  state.players.forEach(p => {
+    if (idSet.has(p.id)) {
+      p.gamesPlayed = (p.gamesPlayed || 0) + 1;
+    }
+  });
+
+  const courtNumber = 1;
+  const courtReasons = {
+    [courtNumber]: 'Ad-hoc court recorded manually.'
+  };
+
+  const newRound = {
+    roundNumber: state.nextRoundNumber++,
+    courts: [
+      {
+        courtNumber,
+        players: playerIds,
+        pairs
+      }
+    ],
+    sitOut: [],
+    debug: {
+      sitOutReasons: [],
+      courtReasons
+    }
+  };
+
+  state.rounds.push(newRound);
+  saveState();
+  clearAdhocPanel();
+  renderPlayers();
+  renderRounds();
+}
+
+
 
 // ===========================
 //  EVENT WIRING
@@ -1088,6 +1260,13 @@ generateRoundBtn.addEventListener('click', () => {
 if (regenerateRoundBtn) {
   regenerateRoundBtn.addEventListener('click', () => {
     regenerateLastRound();
+  });
+}
+
+
+if (recordAdhocBtn) {
+  recordAdhocBtn.addEventListener('click', () => {
+    openAdhocPanel();
   });
 }
 

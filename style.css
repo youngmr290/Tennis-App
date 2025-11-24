@@ -163,6 +163,47 @@ button:disabled {
   margin-left: 0.5rem;
 }
 
+/* ===== Ad-hoc Court Panel ===== */
+
+.adhoc-panel {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.adhoc-text {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.adhoc-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.adhoc-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.adhoc-item input[type="checkbox"] {
+  transform: scale(1.05);
+}
+
+.adhoc-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+
 /* ===== Settings Controls ===== */
 
 .settings-container {
