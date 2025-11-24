@@ -62,6 +62,7 @@
         <div class="panel-header-row">
           <h2>Rounds Today</h2>
           <button id="generate-round-btn">Generate Next Round</button>
+          <button id="regenerate-round-btn" class="secondary">Re-generate Round</button>
         </div>
         <div id="rounds-container"></div>
       </section>
@@ -71,7 +72,10 @@
     <!-- PLAYER PANEL -->
     <section class="panel">
       <div class="panel-header-row">
-        <h2>Players</h2>
+        <h2>
+          Players
+          <span id="present-count" class="present-count"></span>
+        </h2>
         <button id="clear-day-btn" class="secondary small-btn">Start New Day</button>
       </div>
 

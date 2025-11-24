@@ -156,6 +156,13 @@ button:disabled {
   background: #ef4444;
 }
 
+.present-count {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 0.5rem;
+}
+
 /* ===== Settings Controls ===== */
 
 .settings-container {

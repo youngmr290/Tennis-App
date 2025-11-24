@@ -194,6 +194,9 @@ const pairingModeSelect = document.getElementById('pairing-mode');
 const uniquenessSelect = document.getElementById('uniqueness-importance');
 const debugTooltipsToggle = document.getElementById('debug-tooltips-toggle');
 
+const regenerateRoundBtn = document.getElementById('regenerate-round-btn');
+const presentCountSpan = document.getElementById('present-count');
+
 
 // ===========================
 //  RENDERING
@@ -206,7 +209,11 @@ function renderPlayers() {
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  let presentCount = 0;
+
   for (const p of players) {
+    if (p.isPresent) presentCount++;
+
     const tr = document.createElement('tr');
 
     const nameTd = document.createElement('td');
@@ -226,6 +233,7 @@ function renderPlayers() {
     presentCheckbox.addEventListener('change', () => {
       p.isPresent = presentCheckbox.checked;
       saveState();
+      renderPlayers();
     });
     presentTd.appendChild(presentCheckbox);
 
@@ -272,6 +280,9 @@ function renderPlayers() {
     tr.appendChild(deleteTd);
 
     playersTableBody.appendChild(tr);
+  }
+  if (presentCountSpan) {
+    presentCountSpan.textContent = `(${presentCount} present)`;
   }
 }
 
@@ -975,6 +986,48 @@ function generateNextRound() {
 }
 
 
+function regenerateLastRound() {
+  if (state.rounds.length === 0) {
+    alert('No round to re-generate.');
+    return;
+  }
+
+  // 1) Remove last round
+  const lastRound = state.rounds.pop();
+
+  // 2) Work out who played and who sat
+  const playingIds = new Set();
+  (lastRound.courts || []).forEach(court => {
+    (court.players || []).forEach(id => playingIds.add(id));
+  });
+
+  const sitIds = new Set(lastRound.sitOut || []);
+
+  // 3) Roll back stats
+  state.players.forEach(p => {
+    if (playingIds.has(p.id)) {
+      p.gamesPlayed = Math.max(0, (p.gamesPlayed || 0) - 1);
+    }
+    if (sitIds.has(p.id)) {
+      p.sits = Math.max(0, (p.sits || 0) - 1);
+    }
+  });
+
+  // 4) Keep round numbers tidy (reuse same round number)
+  if (state.nextRoundNumber > 1) {
+    state.nextRoundNumber -= 1;
+  }
+
+  saveState();
+  renderPlayers();
+  renderRounds();
+
+  // 5) Generate a fresh round with the current player list
+  generateNextRound();
+}
+
+
+
 // ===========================
 //  EVENT WIRING
 // ===========================
@@ -1031,6 +1084,12 @@ clearDayBtn.addEventListener('click', () => {
 generateRoundBtn.addEventListener('click', () => {
   generateNextRound();
 });
+
+if (regenerateRoundBtn) {
+  regenerateRoundBtn.addEventListener('click', () => {
+    regenerateLastRound();
+  });
+}
 
 
 // ===========================
