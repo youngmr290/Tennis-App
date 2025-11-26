@@ -1,5 +1,5 @@
 // service-worker.js
-const CACHE_NAME = 'tennis-rotation-v1';
+const CACHE_NAME = 'tennis-rotation-v2';
 
 // List of files to cache for offline use.
 // Use relative paths so this works on GitHub Pages project URLs.

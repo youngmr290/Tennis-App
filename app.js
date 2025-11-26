@@ -225,8 +225,26 @@ function renderPlayers() {
     const genderTd = document.createElement('td');
     genderTd.textContent = p.gender;
 
+    // === Editable skill cell ===
     const skillTd = document.createElement('td');
     skillTd.textContent = p.skill;
+    skillTd.classList.add('editable-cell');
+    skillTd.title = 'Click to edit skill (1–10)';
+    skillTd.addEventListener('click', () => {
+      const current = p.skill ?? 5;
+      const input = prompt(`Set skill for ${p.name} (1–10):`, String(current));
+      if (input === null) return; // user cancelled
+
+      const value = parseInt(input, 10);
+      if (isNaN(value) || value < 1 || value > 10) {
+        alert('Skill must be a whole number between 1 and 10.');
+        return;
+      }
+
+      p.skill = value;
+      saveState();
+      renderPlayers();
+    });
 
     const presentTd = document.createElement('td');
     presentTd.classList.add('center-cell', 'checkbox-col');
@@ -284,6 +302,7 @@ function renderPlayers() {
 
     playersTableBody.appendChild(tr);
   }
+
   if (presentCountSpan) {
     presentCountSpan.textContent = `(${presentCount} present)`;
   }

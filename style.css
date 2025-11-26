@@ -203,6 +203,15 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.editable-cell {
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.editable-cell:hover {
+  background: #fef3c7; /* soft highlight on hover */
+}
+
 
 /* ===== Settings Controls ===== */
 
