@@ -62,5 +62,5 @@ No app store download is required!
 ### ℹ️ Important Notes
 
 - App works offline.
-- If your fixtures or player information are stored locally, clearing browser or app data may remove them.
+- Your fixtures or player information are stored locally, clearing browser or app data may remove them.
 
