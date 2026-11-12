@@ -61,9 +61,6 @@ No app store download is required!
 
 ### ℹ️ Important Notes
 
-- The app uses the same website, so updates are available when the online version is updated.
-- An internet connection may still be required.
-- Installing the app does not automatically synchronise saved data between devices.
+- App works offline.
 - If your fixtures or player information are stored locally, clearing browser or app data may remove them.
 
-**Tip:** Add the app to your home screen for quick access before each tennis session! 🎾
